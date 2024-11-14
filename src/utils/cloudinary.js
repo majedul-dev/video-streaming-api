@@ -44,4 +44,17 @@ const deleteFromCloudinary = async (avatarUrl) => {
 
 
 
-export {uploadOnCloudinary, deleteFromCloudinary}
+
+
+
+
+const extractPublicId = async (cloudinaryUrl) => {
+    const parts = cloudinaryUrl.split('/').pop().split('.')[0];;
+    // const fileName = parts[parts.length - 1].split('.')[0]; // Extract file name without extension
+    // return parts[parts.length - 2] + '/' + fileName; // Include folder if present
+    return parts
+}
+
+
+
+export {uploadOnCloudinary, deleteFromCloudinary, extractPublicId}
