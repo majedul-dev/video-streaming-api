@@ -1,19 +1,11 @@
-import mongoose, {isValidObjectId} from "mongoose"
 import {Video} from "../models/video.model.js"
 import {User} from "../models/user.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
-import {uploadOnCloudinary} from "../utils/cloudinary.js"
-import {v2 as cloudinary} from "cloudinary"
+import {deleteFromCloudinary, uploadOnCloudinary} from "../utils/cloudinary.js"
 
-cloudinary.config({ 
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
-    api_key: process.env.CLOUDINARY_API_KEY, 
-    api_secret: process.env.CLOUDINARY_API_SECRET 
-});
-
-const getAllVideos = asyncHandler(async (req, res) => { 
+const getAllVideos = asyncHandler(async (req, res) => {
     const { 
         page = 1, 
         limit = 10, 
@@ -75,8 +67,6 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 const publishAVideo = asyncHandler(async (req, res) => {
     const { title, description} = req.body
-    // TODO: get video, upload to cloudinary, create video
-
     const user = await User.findById(req.user?._id);
 
     if (!user) {
@@ -99,10 +89,10 @@ const publishAVideo = asyncHandler(async (req, res) => {
     // Create video in MongoDB
     const video = new Video({
         videoFile: videoUploadResponse.url,
-        thumbnail: thumbnailUrl?.url || "", // Use the video as a fallback for thumbnail if none is provided
+        thumbnail: thumbnailUrl?.url || "",
         title,
         description,
-        duration: videoUploadResponse.duration || 0, // Assuming Cloudinary provides duration in response
+        duration: videoUploadResponse.duration || 0,
         owner: user._id,
     });
 
@@ -116,8 +106,6 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
 const getVideoById = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-    //TODO: get video by id
-
     const video = await Video.findById(videoId);
 
     res.status(200).json(new ApiResponse(200, video, "Video fatched successfully"))
@@ -135,21 +123,9 @@ const updateVideo = asyncHandler(async (req, res) => {
         throw new ApiError(404, "video not found")
     }
 
-    // Find old video and thumbnail then delete
-    const videoPublicId = video.videoFile.replace(/^.*[\\/]/, '').split('.')[0];
-    const thumbnailPublicId = video.thumbnail.replace(/^.*[\\/]/, '').split('.')[0];
-
-    const deleteVideo = await cloudinary.uploader.destroy(videoPublicId, { resource_type: 'video' })
-    const deleteThumbnail = await cloudinary.uploader.destroy(thumbnailPublicId, { resource_type: 'image' })
-
-    if (!deleteVideo.result || deleteVideo.result !== 'ok') {
-        console.error('Cloudinary delete error (video):', deleteVideo);
-        throw new Error("Failed to delete old video from Cloudinary");
-    }
-    if (!deleteThumbnail.result || deleteThumbnail.result !== 'ok') {
-        console.error('Cloudinary delete error (thumbnail):', deleteThumbnail);
-        throw new Error("Failed to delete old thumbnail from Cloudinary");
-    }
+    // delete old video and thumbnail from cloudinary
+    await deleteFromCloudinary(video.videoFile, 'video')
+    await deleteFromCloudinary(video.thumbnail, 'image')
 
     // upload new video and thumbnail
     const videoLocalPath = req.files?.video[0].path;
@@ -194,16 +170,8 @@ const deleteVideo = asyncHandler(async (req, res) => {
         throw new ApiError(401, "this user is not authorized for delete the video")
     }
 
-    // Find video and thumbnail then delete from cloudinary
-    const videoPublicId = video.videoFile.replace(/^.*[\\/]/, '').split('.')[0];
-    const thumbnailPublicId = video.thumbnail.replace(/^.*[\\/]/, '').split('.')[0];
-
-    if (videoPublicId) {
-        await cloudinary.uploader.destroy(videoPublicId, { resource_type: 'video' })
-    }
-    if (thumbnailPublicId) {
-        await cloudinary.uploader.destroy(thumbnailPublicId, { resource_type: 'image' })
-    }
+    await deleteFromCloudinary(video.videoFile, 'video')
+    await deleteFromCloudinary(video.thumbnail, 'image')
 
     await video.deleteOne();
 
@@ -228,13 +196,13 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
     if (video.isPublished === true) {
         await Video.findByIdAndUpdate(
-            videoId,
+            video._id,
             { $set: { isPublished: false } },
             { new: true }
         )
     } else if (video.isPublished === false) {
         await Video.findByIdAndUpdate(
-            videoId,
+            video._id,
             { $set: { isPublished: true } },
             { new: true }
         )
