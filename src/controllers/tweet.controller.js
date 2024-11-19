@@ -24,26 +24,41 @@ const createTweet = asyncHandler(async (req, res) => {
 })
 
 const getUserTweets = asyncHandler(async (req, res) => {
-    const userId = req.params.userId
+    const {userId} = req.params
+    const {page=1, limit=10} = req.query
 
-    const user = await User.findById(userId)
+    try {
+        const pageNumber = parseInt(page, 10)
+        const pageSize = parseInt(limit, 10)
+        const skip = (pageNumber - 1) * pageSize;
 
-    if (!user) {
-        throw new ApiError(404, "user not found")
-    }
-    const tweets = await Tweet.aggregate([
-        {
-            $match: {
-                owner: new mongoose.Types.ObjectId(userId)
-            }
+        const user = await User.findById(userId)
+        if (!user) {
+            throw new ApiError(404, "user not found")
         }
-    ])
 
-    res.status(200).json({
-        tweets,
-        total: tweets.length,
-        message: "your all tweets"
-    })
+        const totalTweets = await Tweet.countDocuments({owner: userId})
+
+        const tweets = await Tweet.aggregate([
+            {
+                $match: {
+                    owner: new mongoose.Types.ObjectId(userId)
+                }
+            },
+            { $skip: skip },
+            {$limit: pageSize}
+        ])
+    
+        res.status(200).json({
+            tweets,
+            totalTweets,
+            currentPage: pageNumber,
+            totalPage: Math.ceil(totalTweets / pageSize),
+            message: "your all tweets"
+        })
+    } catch (error) {
+        throw new ApiError(500, error, "Server error")
+    }
 })
 
 const updateTweet = asyncHandler(async (req, res) => {
@@ -64,13 +79,12 @@ const updateTweet = asyncHandler(async (req, res) => {
     const updatedTweet = await Tweet.findByIdAndUpdate(
         tweetId,
         { $set: { content } },
-        {new: true}
+        {new: true, runValidators: true}
     )
     res.status(200).json(new ApiResponse(200, updatedTweet, "tweet updated successfully"))
 })
 
 const deleteTweet = asyncHandler(async (req, res) => {
-    //TODO: delete tweet
     const userId = req.user._id;
     const { tweetId } = req.params
 

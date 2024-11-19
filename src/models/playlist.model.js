@@ -3,11 +3,15 @@ import mongoose, {Schema} from "mongoose";
 const playlistSchema = new Schema({
     name: {
         type: String,
-        required: true
+        required: [true, "Name is required"],
+        trim: true,
     },
     description: {
         type: String,
-        required: true
+        required: [true, "Description is required"],
+        trim: true,
+        min: 2,
+        max: 1000
     },
     videos: [
         {
